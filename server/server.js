@@ -1,39 +1,35 @@
 require("dotenv").config();
 const express = require("express");
-const bodyParser = require("body-parser");
 const app = express();
 const db = require("./db/connection");
 const PORT = process.env.PORT || 5000;
-const upload = require("./utils/multer");
-const cloud = require("./utils/cloudinary");
-const fs = require("node:fs");
+const { cloudinary } = require("./utils/cloudinary");
 
-app.use(
-  bodyParser.urlencoded({
-    extended: false
-  })
-);
-app.use(bodyParser.json());
-app.use("/upload-images", upload.array("image"), async (req, res) => {
-  const uploader = async path => await cloud.uploads(path, "Images");
-  if (req.method === "POST") {
-    const urls = [];
-    const files = req.files;
-    for (const file of files) {
-      const { path } = file;
-      const newPath = await uploader(path);
-      urls.push(newPath);
-      fs.unlinkSync(path);
-    }
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-    res.status(200).json({
-      message: "Images uploades successfully",
-      data: urls
+app.get("/api/images", async (req, res) => {
+  const { resources } = await cloudinary.search
+    .expression("folder: react_demo")
+    .sort_by("public_id", "desc")
+    .max_results(30)
+    .execute();
+
+  const publicIds = resources.map(file => file.public_id);
+
+  res.send(publicIds);
+});
+
+app.post("/api/upload", async (req, res) => {
+  try {
+    const fileStr = req.body.data;
+    const uploadResponse = await cloudinary.uploader.upload(fileStr, {
+      upload_preset: "guu5ztwg"
     });
-  } else {
-    res.status(405).json({
-      err: `${req.method} method not allowed`
-    })
+    console.log(uploadResponse); // url to save to MongoDB: uploadResponse.secure_url
+    res.json({ message: "File uploaded to cloudinary" });
+  } catch (error) {
+    console.log(error);
   }
 });
 
